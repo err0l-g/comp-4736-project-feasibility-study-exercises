@@ -1,0 +1,25 @@
+services:
+  server:
+    build:
+      context: .
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      DOMAIN_NAME: ${DOMAIN}
+    networks:
+      - traefik-public
+      - internal-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.project-exercises-router.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.project-exercises-router.entrypoints=websecure"
+      - "traefik.http.routers.project-exercises-router.tls.certresolver=myresolver"
+      - "traefik.http.routers.project-exercises-router.service=project-exercises-api-service"
+      - "traefik.http.services.project-exercises-api-service.loadbalancer.server.port=${PORT}"
+
+networks:
+  traefik-public:
+    external: true
+  internal-network:
+    driver: bridge

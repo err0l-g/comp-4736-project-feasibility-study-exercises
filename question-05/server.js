@@ -2,11 +2,21 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const twilio = require('twilio');
 const path = require('path');
+const speech = require('@google-cloud/speech');
+const fs = require('fs');
+const multer = require('multer');
 require('dotenv').config();
 
 const app = express();
 const port = process.env.PORT || 8005;
-const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+
+// Initialize Twilio and Google Speech clients
+const googleClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+const speechClient = new speech.SpeechClient({
+  keyFilename: path.join(__dirname, 'credentials.json'),
+});
+
+const upload = multer({ dest: 'uploads/' }); 
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -20,7 +30,7 @@ app.get('/comp-4537/project-exercises/question_five', (req, res) => {
 app.post('/comp-4537/project-exercises/question_five', (req, res) => {
   const { phone, message } = req.body;
 
-  client.messages
+  googleClient.messages
     .create({
       body: message,
       from: process.env.TWILIO_PHONE_NUMBER,
@@ -30,13 +40,55 @@ app.post('/comp-4537/project-exercises/question_five', (req, res) => {
     .catch((error) => res.status(500).send(`Error: ${error.message}`));
 });
 
-app.listen(port, () => {
-  console.log(`Server running at ${process.env.DOMAIN}:${port}`);
-});
-
-// Question 6: Voice Recognition API (Google Cloud Speech-to-Text)
+// Question 6: Voice Recognition API 
 
 app.get('/comp-4537/project-exercises/question_six', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'question_six.html'));
 });
 
+app.post('/comp-4537/project-exercises/question_six/transcribe', upload.single('audio'), async (req, res) => {
+  if (!req.file) {
+      return res.status(400).send('No audio file uploaded.');
+  }
+
+  const audioFile = req.file.path;
+
+  try {
+      const audioBytes = fs.readFileSync(audioFile).toString('base64');
+
+      const request = {
+        audio: { content: audioBytes },
+        config: {
+          encoding: 'WEBM_OPUS', 
+          sampleRateHertz: 48000, 
+          languageCode: 'en-US',
+        },
+      };
+
+      const apiResponse = await speechClient.recognize(request);
+      
+      const results = Array.isArray(apiResponse) ? apiResponse[0].results : apiResponse.results;
+
+      if (!results || results.length === 0) {
+          return res.json({ transcription: 'No speech detected.' });
+      }
+
+      const transcription = results
+        .map((result) => result.alternatives[0].transcript)
+        .join('\n');
+      
+      res.json({ transcription });
+
+  } catch (error) {
+      console.error("Transcription Error:", error);
+      res.status(500).send(`Error: ${error.message}`);
+  } finally {
+      if (fs.existsSync(audioFile)) {
+          fs.unlinkSync(audioFile);
+      }
+  }
+});
+
+app.listen(port, () => {
+  console.log(`Server running at ${process.env.DOMAIN}:${port}`);
+});

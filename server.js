@@ -6,6 +6,7 @@ const speech = require('@google-cloud/speech');
 const fs = require('fs');
 const multer = require('multer');
 const rateLimit = require('express-rate-limit');
+const os = require('os');
 require('dotenv').config();
 
 const app = express();
@@ -17,7 +18,7 @@ const googleClient = new speech.SpeechClient({
   keyFilename: path.join(__dirname, 'credentials.json'),
 });
 
-const upload = multer({ dest: 'uploads/' }); 
+const upload = multer({ dest: os.tmpdir() });
 
 // Limits each IP to 10 requests per 15-minute window
 const apiLimiter = rateLimit({

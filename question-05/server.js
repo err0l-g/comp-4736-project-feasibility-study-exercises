@@ -5,18 +5,28 @@ const path = require('path');
 const speech = require('@google-cloud/speech');
 const fs = require('fs');
 const multer = require('multer');
+const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
 const app = express();
 const port = process.env.PORT || 8005;
 
 // Initialize Twilio and Google Speech clients
-const googleClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-const speechClient = new speech.SpeechClient({
+const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+const googleClient = new speech.SpeechClient({
   keyFilename: path.join(__dirname, 'credentials.json'),
 });
 
 const upload = multer({ dest: 'uploads/' }); 
+
+// Limits each IP to 10 requests per 15-minute window
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, 
+  max: 10, 
+  message: { error: 'Too many requests from this IP, please try again after 15 minutes.' },
+  standardHeaders: true, 
+  legacyHeaders: false, 
+});
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -27,10 +37,10 @@ app.get('/comp-4537/project-exercises/question_five', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'question_five.html'));
 });
 
-app.post('/comp-4537/project-exercises/question_five', (req, res) => {
+app.post('/comp-4537/project-exercises/question_five', apiLimiter, (req, res) => {
   const { phone, message } = req.body;
 
-  googleClient.messages
+  twilioClient.messages
     .create({
       body: message,
       from: process.env.TWILIO_PHONE_NUMBER,
@@ -46,7 +56,7 @@ app.get('/comp-4537/project-exercises/question_six', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'question_six.html'));
 });
 
-app.post('/comp-4537/project-exercises/question_six/transcribe', upload.single('audio'), async (req, res) => {
+app.post('/comp-4537/project-exercises/question_six/transcribe', apiLimiter, upload.single('audio'), async (req, res) => {
   if (!req.file) {
       return res.status(400).send('No audio file uploaded.');
   }
@@ -65,7 +75,7 @@ app.post('/comp-4537/project-exercises/question_six/transcribe', upload.single('
         },
       };
 
-      const apiResponse = await speechClient.recognize(request);
+      const apiResponse = await googleClient.recognize(request);
       
       const results = Array.isArray(apiResponse) ? apiResponse[0].results : apiResponse.results;
 
@@ -90,5 +100,5 @@ app.post('/comp-4537/project-exercises/question_six/transcribe', upload.single('
 });
 
 app.listen(port, () => {
-  console.log(`Server running at ${process.env.DOMAIN}:${port}`);
+  console.log(`Server running at ${process.env.DOMAIN || 'http://localhost'}:${port}`);
 });
